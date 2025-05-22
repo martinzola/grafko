@@ -1,0 +1,30 @@
+Metadata-Version: 2.1
+Name: grafko
+Version: 0.1.0
+Summary: A Graph Neural Network package for molecular classification tasks.
+Author-email: Martin Zola <your_email@example.com>
+Project-URL: Homepage, https://github.com/martinzola/grafko
+Project-URL: Repository, https://github.com/martinzola/grafko
+Keywords: chemistry,graph neural network,gnn,cheminformatics,pytorch geometric
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Scientific/Engineering :: Chemistry
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: torch>=1.10
+Requires-Dist: torch-geometric>=2.0
+Requires-Dist: pandas>=1.3
+Requires-Dist: scikit-learn>=1.0
+Requires-Dist: optuna>=2.10
+Requires-Dist: rdkit-pypi
+
+# grafko
+A python framework for training molecular graph neural networks for classification tasks.

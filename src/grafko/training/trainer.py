@@ -8,6 +8,7 @@ import time
 import logging
 from typing import Dict, Any, List, Tuple, Union, Optional, Callable
 import os
+from torch.utils.data import WeightedRandomSampler, Dataset # Add this import if not present
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -96,7 +97,7 @@ class ModelTrainer:
         
         # Set criterion based on task type
         if task_type == 'classification':
-            self.criterion = torch.nn.BCEWithLogitsLoss()
+            self.criterion = torch.nn.CrossEntropyLoss()
         else:  # regression
             self.criterion = torch.nn.MSELoss()
             
@@ -123,12 +124,14 @@ class ModelTrainer:
             data = data.to(self.device)
             self.optimizer.zero_grad()
             
+
             # Forward pass
             output = self.model(data.x, data.edge_index, data.batch, 
-                              edge_attr=data.edge_attr if hasattr(data, 'edge_attr') else None)
+                              edge_attr=data.edge_attr.float() if hasattr(data, 'edge_attr') else None)
             
             # Calculate loss
-            target = data.y.view(output.shape)
+            data.y = data.y.long() if self.task_type == 'classification' else data.y.float()
+            target = data.y  # Use the target as is for classification
             loss = self.criterion(output, target)
             
             # Backward pass
@@ -162,22 +165,27 @@ class ModelTrainer:
                 output = self.model(data.x, data.edge_index, data.batch, 
                                   edge_attr=data.edge_attr if hasattr(data, 'edge_attr') else None)
                 
+                # Convert target to Long for classification
+                data.y = data.y.long() if self.task_type == 'classification' else data.y.float()
+                target = data.y
+                
                 # Calculate loss
-                target = data.y.view(output.shape)
                 loss = self.criterion(output, target)
                 total_loss += loss.item() * data.num_graphs
                 
                 # Store predictions
                 if self.task_type == 'classification':
-                    prob = torch.sigmoid(output).cpu().numpy()
-                    pred = (prob > 0.5).astype(int)
-                    y_scores.extend(prob.flatten())
+                    prob = torch.softmax(output, dim=1).cpu().numpy()  # Use softmax for multi-class probabilities
+                    threshold = 0.4
+                    pred = (prob[:, 1] > threshold).astype(int)  # Get the predicted class
+                    y_scores.extend(prob[:, 1])  # Store probabilities for the positive class (class 1)
                 else:  # regression
                     pred = output.cpu().numpy()
                     y_scores.extend(pred.flatten())
                     
                 y_pred.extend(pred.flatten())
                 y_true.extend(target.cpu().numpy().flatten())
+
         
         # Calculate metrics
         results = {'loss': total_loss / len(loader.dataset)}
@@ -185,9 +193,9 @@ class ModelTrainer:
         if self.task_type == 'classification':
             results.update({
                 'accuracy': accuracy_score(y_true, y_pred),
-                'precision': precision_score(y_true, y_pred),
-                'recall': recall_score(y_true, y_pred),
-                'f1': f1_score(y_true, y_pred),
+                'precision': precision_score(y_true, y_pred, average='binary', zero_division=0),
+                'recall': recall_score(y_true, y_pred, average='binary', zero_division=0),
+                'f1': f1_score(y_true, y_pred, average='binary', zero_division=0),
                 'roc_auc': roc_auc_score(y_true, y_scores)
             })
         else:  # regression
@@ -199,33 +207,33 @@ class ModelTrainer:
             
         return results
     
-    def train(self, train_loader: DataLoader, val_loader: DataLoader, 
-              epochs: int = 100, patience: int = 10, 
+    def train(self, train_loader: DataLoader, val_loader: DataLoader,
+              epochs: int = 100, patience: int = 10,
               callbacks: List[Callable] = None,
-              scheduler=None) -> Dict[str, Any]:
+              scheduler=None, num_classes: int = 2) -> Dict[str, Any]:
         """Train the model.
-        
+
         Args:
-            train_loader: DataLoader for training data
+            train_loader: DataLoader for training data (potentially with sampler already configured)
             val_loader: DataLoader for validation data
             epochs: Maximum number of epochs to train
             patience: Early stopping patience
             callbacks: List of callbacks to call after each epoch
             scheduler: Learning rate scheduler
-            
+
         Returns:
-            Training history
+            Training history.
         """
         if callbacks is None:
             callbacks = []
-            
+
         # Add early stopping
         early_stopping = EarlyStopping(
-            patience=patience, 
+            patience=patience,
             mode='max' if self.task_type == 'classification' else 'min',
             restore_best_weights=True
         )
-        
+
         logger.info(f"Starting training for {epochs} epochs with {self.task_type} task")
         start_time = time.time()
         
@@ -256,13 +264,13 @@ class ModelTrainer:
             # Call callbacks
             for callback in callbacks:
                 callback(self, epoch, train_loss, val_metrics)
-                
+            
             # Check early stopping
             if self.task_type == 'classification':
                 early_stopping(self.model, val_metrics.get('roc_auc', val_metrics.get('f1', -val_loss)))
             else:
                 early_stopping(self.model, -val_metrics.get('r2', val_loss))
-                
+            
             if epoch % 5 == 0:
                 if self.task_type == 'classification':
                     logger.info(f"Epoch {epoch}: Train Loss: {train_loss:.4f}, "
@@ -274,12 +282,12 @@ class ModelTrainer:
                               f"Val Loss: {val_loss:.4f}, "
                               f"Val RMSE: {val_metrics.get('rmse', 0):.4f}, "
                               f"Val R²: {val_metrics.get('r2', 0):.4f}")
-                
+            
             # Early stopping check
             if early_stopping.early_stop:
                 logger.info(f"Early stopping triggered at epoch {epoch}")
                 break
-                
+            
         # Restore best weights
         early_stopping.restore_weights(self.model)
         
@@ -465,3 +473,89 @@ class ModelTrainer:
             logger.info(f"ROC curve plot saved to {save_path}")
         else:
             plt.show()
+    
+def get_weighted_sampler(dataset: Dataset, num_classes: int, imbalance_threshold: float = 2.0) -> Optional[WeightedRandomSampler]:
+    """
+    Check dataset balance and return a WeightedRandomSampler if imbalanced.
+
+    Args:
+        dataset: PyTorch Dataset containing the data. Assumes each item `data`
+                 has a `data.y` attribute that is a tensor containing a single class label.
+        num_classes: Number of classes in the dataset.
+        imbalance_threshold: Ratio between the largest and smallest class count
+                             to consider the dataset imbalanced.
+
+    Returns:
+        WeightedRandomSampler if imbalanced, otherwise None.
+    """
+    logger.info("Checking dataset balance...")
+    if not hasattr(dataset, '__len__') or not hasattr(dataset, '__getitem__'):
+         logger.error("Provided dataset object does not behave like a standard PyTorch Dataset.")
+         # Attempt to handle if it's a DataLoader by accessing its dataset, but this is fragile
+         if hasattr(dataset, 'dataset') and isinstance(dataset.dataset, Dataset):
+             logger.warning("Received DataLoader instead of Dataset, accessing underlying dataset.")
+             dataset = dataset.dataset
+         else:
+             logger.error("Cannot determine dataset from input.")
+             return None # Cannot proceed
+
+    class_counts = [0] * num_classes
+    try:
+        for i in range(len(dataset)):
+            data = dataset[i]
+            if not hasattr(data, 'y') or data.y is None:
+                logger.warning(f"Sample {i} has no attribute 'y' or it is None. Skipping for weighting.")
+                continue
+            # Assuming data.y is a tensor containing the single class label for this graph
+            if data.y.numel() != 1:
+                 logger.warning(f"Sample {i} has data.y with {data.y.numel()} elements. Expecting 1 for weighting. Using first element.")
+            label = int(data.y.item()) # Get the scalar value and convert to int
+            if 0 <= label < num_classes:
+                class_counts[label] += 1
+            else:
+                logger.warning(f"Sample {i} has out-of-bounds label: {label}. Skipping.")
+    except Exception as e:
+        logger.error(f"Error accessing dataset elements for weighting: {e}")
+        return None # Cannot calculate weights
+
+    logger.info(f"Class distribution: {class_counts}")
+
+    # Check for imbalance
+    min_count = min(c for c in class_counts if c > 0)
+    max_count = max(class_counts)
+
+    if min_count == 0:
+        logger.warning("One or more classes have zero samples. Cannot use weighted sampling.")
+        return None
+
+    is_imbalanced = (max_count / min_count) > imbalance_threshold
+
+    if is_imbalanced:
+        logger.info(f"Dataset is imbalanced (ratio {max_count / min_count:.2f} > {imbalance_threshold}). Applying weighted sampling.")
+        class_weights = [1.0 / count if count > 0 else 0.0 for count in class_counts]
+
+        # Assign one weight per sample in the dataset
+        sample_weights = [0.0] * len(dataset)
+        try:
+            for i in range(len(dataset)):
+                 data = dataset[i]
+                 if not hasattr(data, 'y') or data.y is None: continue # Skip samples skipped above
+                 label = int(data.y.item())
+                 if 0 <= label < num_classes:
+                     sample_weights[i] = class_weights[label]
+                 # Samples with bad labels will have weight 0.0
+        except Exception as e:
+             logger.error(f"Error assigning sample weights: {e}")
+             return None
+
+        # Ensure sample_weights has the correct length
+        if len(sample_weights) != len(dataset):
+             logger.error(f"Mismatch in sample_weights length ({len(sample_weights)}) and dataset length ({len(dataset)}).")
+             return None
+
+        sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(sample_weights), replacement=True)
+        logger.info(f"Class weights: {class_weights}")
+        return sampler
+    else:
+        logger.info(f"Dataset is considered balanced (ratio {max_count / min_count:.2f} <= {imbalance_threshold}). No weighted sampling applied.")
+        return None

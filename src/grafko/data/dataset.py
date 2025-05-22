@@ -98,7 +98,7 @@ class MolecularDataset(InMemoryDataset):
                 bond_feature_vector_types.add(bond.GetBondTypeAsDouble())
 
             edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-            edge_attr = torch.tensor(edge_attr, dtype=torch.long)
+            edge_attr = torch.tensor(edge_attr, dtype=torch.float)
 
             # Create Data object
             data = Data(
@@ -200,7 +200,7 @@ class MolecularDatasetFactory:
                         edge_attr.append([bond.GetBondTypeAsDouble()])
 
                     edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
-                    edge_attr = torch.tensor(edge_attr, dtype=torch.long)
+                    edge_attr = torch.tensor(edge_attr, dtype=torch.float)
 
                     # Create Data object
                     data = Data(

@@ -1,0 +1,77 @@
+# pyproject.toml
+
+[build-system]
+# Specifies that setuptools is needed to build the package
+requires = ["setuptools>=61.0"]
+# Specifies that setuptools should be used as the build backend
+build-backend = "setuptools.build_meta"
+
+[project]
+# --- Core Metadata ---
+# Required: Name of the package on PyPI
+name = "grafko"
+# Required: Version number (consider using semantic versioning, e.g., "0.1.0")
+version = "0.1.0"
+# Optional: Your name or organization name
+authors = [
+  { name="Martin Zola", email="your_email@example.com" }, # Replace with actual details
+]
+# Required: Short description
+description = "A Graph Neural Network package for molecular classification tasks."
+# Optional: Long description read from README.md
+readme = "README.md"
+# Optional: Requires Python 3.8 or higher (adjust as needed)
+requires-python = ">=3.8"
+# Optional: License identifier (e.g., "MIT", "Apache-2.0") - should match your LICENSE file
+license = { file="LICENSE" } # Or use text = "MIT" if you don't have a file yet
+# Optional: Keywords for PyPI search
+keywords = ["chemistry", "graph neural network", "gnn", "cheminformatics", "pytorch geometric"]
+# Optional: Classifiers for PyPI categorization (find options at https://pypi.org/classifiers/)
+classifiers = [
+    "Development Status :: 3 - Alpha", # Or "4 - Beta", "5 - Production/Stable"
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License", # Choose your license
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# --- Dependencies ---
+# List packages required for your package to run
+dependencies = [
+    "torch>=1.10", # Specify versions as needed
+    "torch-geometric>=2.0",
+    "pandas>=1.3",
+    "scikit-learn>=1.0",
+    "optuna>=2.10",
+    "rdkit-pypi", # RDKit dependency
+    # Add any other core dependencies
+]
+
+# --- Optional URLs ---
+[project.urls]
+Homepage = "https://github.com/martinzola/grafko" # Replace with your repo URL
+Repository = "https://github.com/martinzola/grafko"
+# Bug Tracker = "https://github.com/martinzola/grafko/issues" # Uncomment if you have one
+
+# --- Entry Points (for Command-Line Scripts) ---
+# This makes your cli.py runnable after installation
+[project.scripts]
+# This means typing `grafko_run` in the terminal will execute the `main` function in `grafko.cli`
+grafko_run = "grafko.cli:main"
+
+# --- Setuptools Specific Configuration (if needed, often inferred) ---
+# If using the src layout, tell setuptools where to find the package
+[tool.setuptools.packages.find]
+where = ["src"]  # Look for packages in the src directory
+
+# If you have data files inside your package (e.g., templates, default configs)
+# that need to be installed, uncomment and configure below:
+# [tool.setuptools.package-data]
+# grafko = ["data_files/*.csv"] # Example: include all csv files in grafko/data_files
+
